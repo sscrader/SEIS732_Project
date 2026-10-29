@@ -57,6 +57,7 @@ Profiling SQL: [`sql/p1_source_profile.sql`](../sql/p1_source_profile.sql)
 | source_rows | rows_with_null_key_component | repeated_key_groups |
 |:-----------:|:----------------------------:|:-------------------:|
 | 3729438201  | 1372949073                   | 4002218             |
+
 Based on these results, I've concluded that it would be difficult to establish exactly what combination of observations composes the grain of the raw table, and the exact grain defining columns would be easier to determine after the raw data is processed further (eg. limiting countrycode = US, basisofrecord = HUMAN_OBSERVATION)
 
 #### Census Urban Areas
@@ -111,15 +112,26 @@ The U.S. Census has published the 2020 urban area shape files. To test versionin
 
 | Layer | Planned object | Responsibility |
 |:---:|:---:|:---:|
-| Raw | raw_gbif_occurrences | Preserve source data as appropriate |
-| Raw | raw_census_urban_areas | Preserve source data as appropriate |
-| Curated | To be defined | Apply documented transformations and quality rules |
-| Curated | To be defined | Apply documented transformations and quality rules |
-| Serving | To be defined | Support the primary audience question |
+| Raw | raw_gbif_occurrences | Preserve the source GBIF occurrence fields that will be needed for further filtering and analysis|
+| Raw | raw_census_urban_areas | Preserve the source census urban-area identifiers, names, and polygon geometries needed to assign occurrence points to urban areas. |
+| Curated | fact_gbif_occurrences | Filter to eligible U.S. records in the selected five-year period, validate dates and coordinates, construct point geometries, and spatially assign each eligible occurrence to a Census urban area. Retain gbifid and the assigned urban-area version key. |
+| Curated | dim_urban_area | Provide consistent urban-area attributes for grouping and filtering that has additional version_key column that supports versioning. |
+| Serving | serving_urban_occurrences | Serving layer that provides aggregate species observation counts by urban area (geo_id), time (eventdate), and species (specieskey) |
 
 ### Preliminary run order and field path
 
-[Trace one important field or measure from source to audience output.]
+1. Inspect and access the GBIF occurrence source and Census urban-area source on BigQuery.
+2. Define the raw source objects, preserving the fields needed downstream and establishing the process to refresh and maintain raw table.
+3. Filter the GBIF records to the U.S. and the selected five-year period then validate required dates, coordinates, and observation identification (require a specieskey, scientific name, or the like).
+4. Convert valid longitude and latitude values in the GBIF set to geographic point geometries and spatially join them to the Census urban-area polygons. 
+5. Check spatial assignment results and confirm that the join has not multiplied occurrence records.
+6. Build the curated occurrence, urban-area, and date tables.
+7. Create the serving layer query to aggregate species observation counts by urban area, time, and species.
+8. Query the serving table to show examples for product - least observed species in Chicago in 2025; count of ground squirrels in anne arbor vs east lancing over time.
+
+Tracing the field measure gbifid through the layers:
+![P1 field trace](../evidence/field_trace.png)
+
 
 ### Project risks and planned checks
 
@@ -146,7 +158,7 @@ and access decision.]
 - Test geographic merge on subset of the data.
 
 **Changes Not Adopted:**
-- 
+- Redefine GBIF raw layer to include all raw data.
 
 **Uncertainty:**
 - 
