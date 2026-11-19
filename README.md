@@ -18,7 +18,7 @@ coverage, and limitations in the underlying source data.
 |---|---|---|
 | P0 | Need, audience, dataset, and feasibility | [P0 Feasibility](docs/p0-feasibility.md) |
 | P1 | Grain, model, history, and pipeline plan | [P1 Plan](docs/p1-plan.md) |
-| P2 | Ingestion, curation, and acceptance checks | Planned |
+| P2 | Ingestion, curation, and acceptance checks | [P2 Build](docs/p2-build.md) |
 | P3 | Serving, reliability, quality, and lineage | Planned |
 | P4 | Access, data product, documentation, and defense | Planned |
 
@@ -40,5 +40,4 @@ extracts prohibited by course or source-provider requirements.
 
 ## Current status
 
-P1 preparation: organizing project documentation, confirming the
-analytical grain, and preparing the source-profile check.
+P2 Build: Working Ingestion, Curation & Acceptance Checks

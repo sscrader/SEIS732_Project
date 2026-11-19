@@ -16,151 +16,68 @@ made within urban areas over time?
 **Supporting question:** What are the 50 least observed species in
 Chicago, IL?
 
-**P2 path being built:** \[Explain which part of the planned product
-this implementation supports, including source data, geographic
-relationship, and time period.\]
+**P2 path being built:** The pathway for data from source to raw and then curated layers, including establishment of the relationship between species observations and urban area data.
 
 ### Changes from the P1 plan
 
 \[Describe consequential changes to source, scope, grain, fields,
 relationships, or transformations. If none, state that explicitly.\]
 
-  -----------------------------------------------------------------------
-  P1 decision             P2 implementation       Reason for change or
-                                                  confirmation
-  ----------------------- ----------------------- -----------------------
-  GBIF: U.S. records      \[Actual subset and     \[Explain\]
-  within selected         date boundaries\]       
-  five-year period                                
-
-  Census urban-area       \[Actual source and     \[Explain\]
-  boundaries              boundary vintage\]      
-
-  Occurrence grain: one   \[Actual Raw and        \[Explain\]
-  row per `gbifid`        Curated grain\]         
-
-  Spatial assignment to   \[Actual predicate and  \[Explain\]
-  urban areas             join behavior\]         
-
-  Urban-area versioning   \[What is implemented;  \[Explain\]
-                          what is deferred\]      
-  -----------------------------------------------------------------------
 
 ### Source objects and input subset
 
-  -------------------------------------------------------------------------------------------------------------------------
-  Source         Full identifier / location                             Source row     Fields needed         Actual subset
-                                                                        meaning                              / selection
-                                                                                                             criteria
-  -------------- ------------------------------------------------------ -------------- --------------------- --------------
-  GBIF           `bigquery-public-data.gbif.occurrences`                One GBIF       \[e.g., `gbifid`,     \[Actual
-  occurrences                                                           occurrence     `eventdate`,          filters\]
-                                                                        record         `countrycode`,        
-                                                                                       `specieskey`,         
-                                                                                       `scientificname`,     
-                                                                                       `decimallatitude`,    
-                                                                                       `decimallongitude`,   
-                                                                                       `basisofrecord`,      
-                                                                                       `datasetkey`\]        
+| Source | Full identifier / location | Source row meaning | Fields needed | Actual subset / selection criteria |
+|---|---|---|---|---|
+| GBIF Biodiversity Data | bigquery-public-data.gbif.occurrences | One row is one species identification observation - <br>evidence of the occurrence of a species (or other taxon) at a particular place on a specified date. | gbifid<br>datasetkey<br>occurrenceid<br>taxonkey<br>specieskey<br>kingdom<br>phylum<br>class<br>order<br>family<br>genus<br>species<br>taxonrank<br>scientificname<br>countrycode<br>stateprovince<br>decimallatitude<br>decimallongitude<br>coordinateuncertaintyinmeters<br>eventdate<br>basisofrecord<br>occurrencestatus<br>individualcount<br>publishingorgkey<br>institutioncode<br>collectioncode<br>catalognumber<br>license<br>lastinterpreted | Raw table should update with new data after each refresh as it's added to the source file<br><br>Geographic filter: countrycode = 'US'<br>Temporal filter: inclusive eventdate >= 2021-01-01  |
+| Census Urban Areas | bigquery-public-data.geo_us_boundaries.urban_areas | One row represents one polygon around an urban area in the US | geo_id<br>urban_area_code<br>name<br>type<br>area_land_meters<br>area_water_meters<br>internal_point_geom<br>urban_area_geom | Table should contain the most recent census urban area data available through BigQuery -<br>last updated Nov 20, 2019, 12:03:21 PM UTC-6<br><br>Should be able to keep version history of urban areas for changes in future census'  |
 
-  Census urban   `bigquery-public-data.geo_us_boundaries.urban_areas`   One polygon    \[e.g., `geo_id`,     \[Actual
-  areas                                                                 representing a name,                 geography /
-                                                                        U.S. urban     `urban_area_geom`\]   vintage\]
-                                                                        area                                 
-
-  Other source,  \[Full identifier\]                                    \[Row          \[Fields\]            \[Subset\]
-  if applicable                                                         meaning\]                            
-  -------------------------------------------------------------------------------------------------------------------------
-
-**Subset and reproducibility details**
-
--   GBIF start date (inclusive): \[YYYY-MM-DD\]
--   GBIF end date (exclusive): \[YYYY-MM-DD\]
--   Geographic filter: \[e.g., `countrycode = 'US'`\]
--   Additional eligibility rules: \[Actual filters\]
--   Census boundary source / vintage: \[Describe\]
--   Snapshot, source version, or selection timestamp: \[Record what is
-    available\]
--   Remaining reproducibility limitation: \[Explain whether the same
-    source rows can be retrieved later\]
 
 ### BigQuery build environment
 
-  Item                           Value
-  ------------------------------ ------------------------------------
-  Google Cloud project ID        \[Project ID\]
-  Raw dataset                    \[Full identifier\]
-  Curated dataset                \[Full identifier\]
-  Processing location            \[Location\]
-  Source project / datasets      \[Full identifiers\]
-  Other relevant configuration   \[Settings / access requirements\]
+| Item | Value |
+|---|---|
+| project ID | seis-732-urban-biodiversity |
+| dataset ID | seis-732-urban-biodiversity.urban_biodiversity_project |
+| Biodiversity Raw dataset table name | GBIF_RAW |
+| Urban Area Raw Dataset table name | URBAN_RAW |
+| Processing location | US |
 
 ### Raw input design and ingestion procedure
 
-Describe how each source is brought into or exposed through your own
-BigQuery project.
-
-  --------------------------------------------------------------------------------------------------------------------------------------------
-  Raw object                 Source object                                          Fields /         Raw row meaning   Creation / loading code
-                                                                                    information                        
-                                                                                    preserved and                      
-                                                                                    why                                
-  -------------------------- ------------------------------------------------------ ---------------- ----------------- -----------------------
-  `raw_gbif_occurrences`     `bigquery-public-data.gbif.occurrences`                \[Fields         \[One row         \[`sql/02_ingest.sql`
-                                                                                    retained and     represents...\]   or loading procedure\]
-                                                                                    purpose\]                          
-
-  `raw_census_urban_areas`   `bigquery-public-data.geo_us_boundaries.urban_areas`   \[Identifiers,   \[One row         \[`sql/02_ingest.sql`
-                                                                                    names,           represents...\]   or loading procedure\]
-                                                                                    geometries                         
-                                                                                    retained\]                         
-
-  \[Additional Raw object\]  \[Source\]                                             \[Information    \[Row meaning\]   \[Code / procedure\]
-                                                                                    preserved\]                        
-  --------------------------------------------------------------------------------------------------------------------------------------------
-
 **Ingestion approach**
 
--   Source type: \[BigQuery public table, source view, external table,
-    file, etc.\]
--   Destination type: \[Native table, external table, view, etc.\]
--   Operation: \[Create, replace, append, merge, etc.\]
--   Loading procedure: \[Exact steps, including any interface or file
-    operation\]
--   Source fields excluded: \[List and explain, if applicable\]
--   Fields / types intentionally preserved: \[Identify\]
+Biodiversity Data
+- Retain all source columns.
+- Filter:
+    - countrycode = 'US'
+    - eventdate >= 2021-01-01
+- history maintenance: keep only the last retrieved gbif_id
 
-**Code and loading instructions:** \[Link runnable SQL or document exact
-procedure, prerequisites, and how to execute it.\]
+Urban Areas
+- Retain all source columns.
+- No filtering or other transformations applied.
+- history maintenance: preserve census boundary history by the census year
 
--   [Source-to-Raw ingestion SQL](../sql/02_ingest.sql)
+**Ingestion SQL:** 
+
+[p2_ingestion.sql](../sql/p2_ingest.sql)
 
 ### Observed Raw input results
 
-Record results from the build you actually ran.
+Results from raw ingestion verification queries:
 
-  -------------------------------------------------------------------------------------------------
-  Raw object                 Run /            Row count  Distinct key    Null key What one row
-                             verification                       count       count represents
-                             date                                                 
-  -------------------------- -------------- ----------- ------------- ----------- -----------------
-  `raw_gbif_occurrences`     \[Date\]         \[Count\]   \[`gbifid`:   \[Count\] \[Description\]
-                                                              count\]             
+| Raw Object | Run Date | Row Count | Distinct Key Count | Null Key Count | Earliest eventdate | Latest eventdate |
+|---|---|---|---|---|---|---|
+| seis-732-urban-biodiversity.urban_biodiversity_project.GBIF_RAW | Nov 19, 2026, 12:07:00 AM UTC-6 | 567,942,479 | 567,942,479 | 0 | 2021-01-01 00:00:00 UTC | 2026-09-29 00:00:00 UTC |
+| seis-732-urban-biodiversity.urban_biodiversity_project.URBAN_RAW | Nov 19, 2026, 12:09:08 AM UTC-6 | 3,601 | 3,601 | 0 | NA | NA |
 
-  `raw_census_urban_areas`   \[Date\]         \[Count\]   \[`geo_id`:   \[Count\] \[Description\]
-                                                              count\]             
-  -------------------------------------------------------------------------------------------------
+**Raw interpretation:** In both raw tables, the row count (COUNT(*)) is equal to the count of distinct keys (COUNT(DISTINCT(key_column))) which indicates that the columns I believed would work as keys for both tables hold up as primary keys. 
 
-**Raw count interpretation:** \[Compare observed counts with expected /
-profiled source counts. Explain differences due to filters, source
-changes, snapshot timing, or loading behavior.\]
+This may change for the URBAN_RAW table when new vintages of the same geo_id are introduced, in which case I would need to develop a vintage key that's a composite between the geo_id and census_year.
 
-**Evidence / query references:** - GBIF Raw count and key check: \[SQL
-file and query\] - Census Raw count and key check: \[SQL file and
-query\] - Other evidence: \[Link / identifier\]
+The eventdate range for the GBIF_RAW table also indicates successful filtering for dates after 2021-01-01.
 
-**Raw input limitations:** \[Explain source refresh, snapshot, or subset
-limitations.\]
+**Raw input limitations:** This raw ingestion is still limited in the metadata it collects for each snapshot, source version, or selection dates. In P#, I'd like to create a load history table to track time and success of refreshes, new loads, and counts of new rows ingested.
 
 ------------------------------------------------------------------------
 
@@ -550,9 +467,7 @@ stored.\]
 
 ### Main limitation and P3 next step
 
-**Main limitation of the P2 path:** \[Most consequential limitation in
-the implemented path: source completeness / reporting effort, spatial
-matching, boundary vintage / versioning, bounded subset, etc.\]
+**Main limitation of the P2 path:** I haven't tested the history tracking capabilities of the DIM_URBAN_AREA table yet.
 
 **Concrete P3 next step:** \[Identify next technical task. For example,
 build the Serving output aggregating recorded observations by urban
@@ -570,85 +485,3 @@ debugging, documentation, or analysis. Explain what you reviewed and how
 you tested / verified it against actual BigQuery data. Identify the
 implementation decisions and claims you personally checked.\]
 
-------------------------------------------------------------------------
-
-## P2 completion review
-
-Mark complete only when the repository contains the evidence.
-
--   [ ] Build note saved at `docs/p2-build.md` or clearly identified
-    alternative.
--   [ ] README links to the P2 build note.
--   [ ] Source objects, full identifiers, subset, Google Cloud project,
-    datasets, and processing location documented.
--   [ ] Runnable ingestion SQL or exact loading instructions saved.
--   [ ] Raw row counts, key checks, row meaning, and verification date
-    recorded.
--   [ ] Curated objects, intended grain, and grain identifiers
-    documented.
--   [ ] Actual rules for fields, types, missing / invalid values,
-    repeated rows, and relationships explained.
--   [ ] Curated counts and material differences from Raw explained.
--   [ ] At least one source → Raw → Curated field trace includes
-    observed evidence and audience measure / output.
--   [ ] Two executable acceptance checks saved.
--   [ ] Both checks include expected results, observed results, and
-    interpretations / actions.
--   [ ] Run order, prerequisites, object behavior, and results to
-    preserve documented.
--   [ ] Documented procedure matches one successful build.
--   [ ] Main P2 limitation and concrete P3 next step recorded.
--   [ ] Consequential AI / tool assistance and verification documented.
--   [ ] P2 work committed to the repository.
-
-## Canvas submission
-
--   **Repository URL:** \[Paste URL\]
--   **P2 commit link or short identifier:** \[Paste commit hash / URL\]
--   **Build note path:** `docs/p2-build.md` \[or alternative path\]
--   **Submission note, if needed:** \[Brief clarification for
-    instructor\]
-
-------------------------------------------------------------------------
-
-## P2 evidence standard --- self-review
-
-  --------------------------------------------------------------------------
-  Evaluation level        Evidence to look for       Self-assessment / notes
-  ----------------------- -------------------------- -----------------------
-  Insufficient Evidence   Missing / inaccessible     \[What is missing?\]
-                          code, inputs, or results   
-                          prevent checking the build 
-                          and main claims.           
-
-  Developing              Useful parts run, but a    \[What remains
-                          consequential input,       incorrect /
-                          grain, transformation,     unverifiable?\]
-                          check, or run-order issue  
-                          makes the Curated result   
-                          incorrect or unverifiable. 
-
-  Proficient              Documented                 \[What evidence
-                          source-to-Raw-to-Curated   demonstrates each
-                          path works at declared     element?\]
-                          grain; rules fit the       
-                          question; two relevant     
-                          checks have observed and   
-                          interpreted results;       
-                          counts and field trace     
-                          support the explanation;   
-                          code and instructions      
-                          support reproduction.      
-
-  Advanced                Meets Proficient and       \[What case did you
-                          investigates an additional investigate, what
-                          consequential source or    changed, and why is the
-                          transformation case.       treatment justified?\]
-                          Evidence shows its effect  
-                          on Curated and supports    
-                          the chosen treatment.      
-  --------------------------------------------------------------------------
-
-> More SQL, objects, or documentation alone do not establish Advanced
-> evidence. The additional case should investigate consequential source
-> or transformation behavior and show its effect on the Curated result.
