@@ -87,7 +87,7 @@ WHERE
   );
 
 -- ------------------------------------------------------------
--- 3. Validation
+-- 3. VALIDATION
 -- ------------------------------------------------------------
 
 -- GBIF_RAW: Row count, distinct identifiers, date coverage, and geographic filter verification.
@@ -111,3 +111,5 @@ SELECT
   COUNTIF(urban_area_geom IS NULL) AS null_urban_area_geom
 FROM
   `seis-732-urban-biodiversity.urban_biodiversity_project.URBAN_RAW`;
+
+  

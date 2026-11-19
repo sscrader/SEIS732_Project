@@ -1,5 +1,6 @@
 # P2 --- Working Ingestion, Curation & Acceptance Checks
 
+------------------------------------------------------------------------
 ## 1. Establish the input and run ingestion
 
 ### Audience, need, and analytical question
@@ -80,110 +81,33 @@ The eventdate range for the GBIF_RAW table also indicates successful filtering f
 **Raw input limitations:** This raw ingestion is still limited in the metadata it collects for each snapshot, source version, or selection dates. In P#, I'd like to create a load history table to track time and success of refreshes, new loads, and counts of new rows ingested.
 
 ------------------------------------------------------------------------
-
 ## 2. Build Curated at the intended grain
 
 ### Curated objects and intended grain
+| Curated object | Purpose | Grain | Keys | SQL reference |
+|:---:|:---:|:---:|:---:|:---:|
+| FACT_GBIF_OCCURRENCES | Eligible U.S. occurrences assigned to urban areas | One unique GBIF occurrence assigned to an applicable urban-area version | gbifid (PK)<br>version_key (FK) | [p2_curate.sql GBIF](../sql/p2_curate.sql#L117-L233) |
+| DIM_URBAN_AREA | Urban-area identifiers, names, geometry, and version attributes | One urban area per Census boundary vintage | version_key (PK) <br>compound of geo_id and census_year | [p2_curate.sql Urban Area](../sql/p2_curate.sql#L12-L83) |
+| DIM_DATE | Calendar attributes for occurrence dates | One calendar date | date_key (PK) | [p2_curate.sql Dates](../sql/p2_curate.sql#L86-L114) |
 
-State precisely what one row represents in each implemented object and
-how it is identified.
-
-  -----------------------------------------------------------------------------------------------
-  Curated object            Purpose        Intended grain: Grain identifier / key SQL reference
-                                           one row                                
-                                           represents...                          
-  ------------------------- -------------- --------------- ---------------------- ---------------
-  `fact_gbif_occurrences`   Eligible U.S.  \[Actual row    \[`gbifid` and         \[File and
-                            occurrences    meaning\]       applicable             section\]
-                            assigned to                    relationship/version   
-                            urban areas                    key\]                  
-
-  `dim_urban_area`          Urban-area     \[One area or   \[`version_key`,       \[File and
-                            identifiers,   one area        `geo_id`, or actual    section\]
-                            names,         version?\]      key\]                  
-                            geometry, and                                         
-                            version                                               
-                            attributes                                            
-
-  `dim_date` (if            Calendar       \[Actual row    \[Date key\]           \[File and
-  implemented)              attributes for meaning\]                              section\]
-                            occurrence                                            
-                            dates                                                 
-
-  \[Additional object\]     \[Purpose\]    \[Grain\]       \[Key\]                \[Reference\]
-  -----------------------------------------------------------------------------------------------
-
-**Actual Curated grain:** \[Explain whether the occurrence table retains
-one row per `gbifid`. Identify the field or field combination
-distinguishing Curated rows. Explain any departure from P1.\]
 
 ### Transformations and business rules
 
-Document rules actually applied, why they are appropriate, and how they
-support the analytical question.
+**Transformations**
+- Generate version_key from geo_id and census_year to create unique vintage identifiers.
+- Convert the GBIF eventdate timestamp to a calendar date for the date-dimension relationship, while retaining the original timestamp in the fact table.
+- Convert latitude and longitude into a BigQuery GEOGRAPHY point and spatially assign it to the appropriate urban-area polygon.
 
-  -----------------------------------------------------------------------------------------
-  Field /          Raw input            Curated           Reason            SQL / evidence
-  relationship                          transformation or                   reference
-                                        rule                                
-  ---------------- -------------------- ----------------- ----------------- ---------------
-  U.S. eligibility `countrycode`        \[Actual filter   \[Why             \[Reference\]
-                                        and null          appropriate\]     
-                                        handling\]                          
+**Missing and invalid values:** 
+- Exclude records without valid coordinates from the spatially assigned fact table.
+- Retain the observation, even if specieskey is NULL. This preserves occurrence evidence without incorrectly discarding records.
+- Exclude observations that cannot be assigned to an urban area from this particular fact table. Record their count separately for reconciliation.
 
-  Observation date `eventdate`          \[Parsing,        \[Time analysis\] \[Reference\]
-                                        valid-date rule,                    
-                                        date range,                         
-                                        missing dates\]                     
+**Repeated records:** 
+- If records with the same gbifid appear in the biodiversity source dataset, we will retain the latest refreshed version of each record per gbifid, as established in your Raw ingestion design.
 
-  Occurrence       `gbifid`             \[Null /          \[Protect grain\] \[Reference\]
-  identifier                            duplicate                           
-                                        handling and key                    
-                                        rule\]                              
-
-  Coordinates      `decimallatitude`,   \[Null, range,    \[Spatial         \[Reference\]
-                   `decimallongitude`   type,             assignment\]      
-                                        point-geometry                      
-                                        rules\]                             
-
-  Species          `specieskey`,        \[Eligibility /   \[Species-level   \[Reference\]
-  identification   `scientificname`,    missing-value     analysis\]        
-                   other taxonomic      rules\]                             
-                   fields                                                   
-
-  Urban-area       Occurrence point and \[Spatial         \[Geographic      \[Reference\]
-  assignment       `urban_area_geom`    predicate and     relationship\]    
-                                        join behavior\]                     
-
-  Urban-area       `geo_id`, boundary   \[Version-key /   \[Preserve        \[Reference\]
-  identity /       vintage, geometry    boundary          geographic        
-  history                               handling;         meaning\]         
-                                        identify deferred                   
-                                        work\]                              
-
-  Repeated rows    \[Identifiers\]      \[Deduplication / \[Effect on       \[Reference\]
-                                        retention rule\]  grain\]           
-
-  Other            \[Field /            \[Rule\]          \[Reason\]        \[Reference\]
-                   relationship\]                                           
-  -----------------------------------------------------------------------------------------
-
-**Missing and invalid values:** \[Explain handling of null dates,
-missing identifiers, missing species information, missing / out-of-range
-coordinates, and other invalid values. Distinguish exclusions from
-retained nulls.\]
-
-**Repeated records:** \[State whether repeated `gbifid` values occur and
-whether records are removed, retained, or treated another way. Explain
-why.\]
-
-**Spatial relationship:** \[Describe point construction and spatial
-join. State the actual predicate, unmatched-record treatment, and
-multiple-match handling.\]
-
-**Rules retained without transformation:** \[Identify source fields or
-relationships retained as-is and provide observed evidence that they are
-suitable.\]
+**Rules retained without transformation:** 
+- The data types are generally maintained as they were assigned in the source tables.
 
 ### Observed Curated results and count reconciliation
 
@@ -468,6 +392,9 @@ stored.\]
 ### Main limitation and P3 next step
 
 **Main limitation of the P2 path:** I haven't tested the history tracking capabilities of the DIM_URBAN_AREA table yet.
+
+load history - build and test
+GBIF duplicate row rules - need another layer than just most recent load. if two are in the same load, we need a "tiebreaker" column.
 
 **Concrete P3 next step:** \[Identify next technical task. For example,
 build the Serving output aggregating recorded observations by urban
