@@ -85,9 +85,9 @@ The eventdate range for the GBIF_RAW table also indicates successful filtering f
 ### Curated objects and intended grain
 | Curated object | Purpose | Grain | Keys | SQL reference |
 |:---:|:---:|:---:|:---:|:---:|
-| FACT_GBIF_OCCURRENCES | Eligible U.S. occurrences assigned to urban areas | One unique GBIF occurrence assigned to an applicable urban-area version | gbifid (PK)<br>version_key (FK) | [p2_curate.sql GBIF](../sql/p2_curate.sql#L91) |
+| FACT_GBIF_OCCURRENCES | Eligible U.S. occurrences assigned to urban areas | One unique GBIF occurrence assigned to an applicable urban-area version | gbifid (PK)<br>version_key (FK) | [p2_curate.sql GBIF](../sql/p2_curate.sql#L98) |
 | DIM_URBAN_AREA | Urban-area identifiers, names, geometry, and version attributes | One urban area per Census boundary vintage | version_key (PK) <br>compound of geo_id and census_year | [p2_curate.sql Urban Area](../sql/p2_curate.sql#L11) |
-| DIM_DATE | Calendar attributes for occurrence dates | One calendar date | date_key (PK) | [p2_curate.sql Dates](../sql/p2_curate.sql#L50) |
+| DIM_DATE | Calendar attributes for occurrence dates | One calendar date | date_key (PK) | [p2_curate.sql Dates](../sql/p2_curate.sql#L69) |
 
 
 ### Transformations and business rules
@@ -123,19 +123,19 @@ The eventdate range for the GBIF_RAW table also indicates successful filtering f
 
 Biodiversity data:
 
-[GBIF Raw to Curated Row and Key Counts](../sql/p2_acceptance.sql#L93) 
+[GBIF Raw to Curated Row and Key Counts](../sql/p2_acceptance.sql#L265) 
 | raw_rows_in_test_window | curated_rows | raw_unique_gbifids | curated_unique_gbifids |
 |---|---|---|---|
 | 4478374 | 4478374 | 4478374 | 4478374 |
 
-[GBIF Curated Grain and Retention](../sql/p2_acceptance.sql#L58) 
+[GBIF Curated Grain and Retention](../sql/p2_acceptance.sql#L222) 
 | total_fact_rows | unique_gbifids | assigned_to_urban_area | not_assigned_to_urban_area | missing_coordinates | missing_specieskey |
 |---|---|---|---|---|---|
 | 4478374 | 4478374 | 1782907 | 2695467 | 3065 | 74110 |
 
 Urban Area data:
 
-[Urban Area Curated Row and Key Counts](../sql/p2_acceptance.sql#L46) 
+[Urban Area Curated Row and Key Counts](../sql/p2_acceptance.sql#L199) 
 | total_rows | unique_version_keys | null_version_keys |
 |---|---|---|
 | 7202 | 3601 | 0 |
@@ -203,108 +203,40 @@ Differences in reporting effort or GBIF source dataset composition could make ch
 ------------------------------------------------------------------------
 ## 4. Make the run reproducible and record the next step
 
-### Repository artifacts and code links
+1.  **Confirm access and configuration**
+    -   Verify access to the GBIF and Census source tables, the `seis-732-urban-biodiversity` project, and the BigQuery `US` processing location.
+2.  **Create the Raw and Curated datasets**
+    -   Run the CREATE SCHEMA statements. Both datasets are created only if they do not already exist.
+    -   Code: [Dataset setup](../sql/p2_ingest.sql#L11).
+3.  **Ingest GBIF observations**
+    -   Input: `bigquery-public-data.gbif.occurrences`.
+    -   Create `GBIF_RAW` if absent, then `MERGE` U.S. records with `eventdate >= 2026-06-01`.
+    -   `GBIF_RAW` is append-only by `gbifid`: new IDs are inserted; existing IDs are not refreshed.
+    -   Code: [GBIF table setup](../sql/p2_ingest.sql#L19) · [GBIF MERGE](../sql/p2_ingest.sql#L33).
+4.  **Ingest Census urban-area boundaries**
+    -   Input: `bigquery-public-data.geo_us_boundaries.urban_areas`.
+    -   Replace `URBAN_VINTAGE_STG` from the source; append new `geo_id` + `census_year` combinations to `URBAN_RAW`.
+    -   Confirm that `p_census_year` on line 71 matches the source vintage before inserting.
+    -   Code: [Census staging and Raw setup](../sql/p2_ingest.sql#L50) · [Vintage assignment and insert](../sql/p2_ingest.sql#L70).
+5.  **Build the Curated tables**
+    -   Inputs: `GBIF_RAW` and `URBAN_RAW`.
+    -   Run the Curated script to rebuild `DIM_URBAN_AREA`, `DIM_DATE`, and `FACT_GBIF_OCCURRENCE`. 
+        -   The `FACT_GBIF_OCCURRENCE` build also creates temporary base and spatial-match tables
+        -   Unmatched observations are retained with a null `version_key`
+    -   These three Curated tables are replaced on each run.
+    -   Code: [Urban-area dimension](../sql/p2_curate.sql#L11) · [Date dimension](../sql/p2_curate.sql#L69) · [Fact table and spatial matching](../sql/p2_curate.sql#L98).
+6.  **Run acceptance checks and validation**
+    -   Prerequisite: the Raw and Curated tables must have been built.
+    -   Run the country-filter/spatial-match comparison: [Acceptance Check 1](../sql/p2_acceptance.sql#L6).
+    -   Run the monthly reporting-activity check: [Acceptance Check 2](../sql/p2_acceptance.sql#L119).
+    -   Run supporting grain, relationship, and reconciliation checks if needed:
+        [Raw and dimension checks](../sql/p2_acceptance.sql#L186) ·
+        [Fact and relationship checks](../sql/p2_acceptance.sql#L222) ·
+        [Raw-to-Curated reconciliation](../sql/p2_acceptance.sql#L265).
+7.  **Save results and update the build record**
+    -   Save Raw and Curated row/key counts, both acceptance-check outputs, and supporting validation results before rebuilding the Curated tables.
+    -   Record the run date, source selection, and Census vintage in the P2 documentation.
 
-  -------------------------------------------------------------------------------
-  Artifact          Responsibility    Repository path / link    Status
-  ----------------- ----------------- ------------------------- -----------------
-  Build note        Build             `docs/p2-build.md`        \[Complete / in
-                    explanation, run                            progress\]
-                    order, results,                             
-                    field trace                                 
-
-  Ingestion SQL     Source-to-Raw     `sql/02_ingest.sql`       \[Complete / N/A
-                    step, if SQL                                / in progress\]
-                    performs it                                 
-
-  Curation SQL      Raw-to-Curated    `sql/03_curate.sql`       \[Complete / in
-                    transformations                             progress\]
-
-  Acceptance SQL    Executable checks `sql/04_acceptance.sql`   \[Complete / in
-                                                                progress\]
-
-  README            Link to P2 build  `README.md`               \[Complete / in
-                    note                                        progress\]
-
-  Supporting        Compact results / \[Path(s)\]               \[Complete / N/A
-  evidence          screenshots, if                             / in progress\]
-                    used                                        
-  -------------------------------------------------------------------------------
-
-### Ordered execution instructions
-
-List steps in the order a person with authorized source access would run
-them. Identify prerequisites, code links, expected outputs, and
-operations that replace or append to objects.
-
-  --------------------------------------------------------------------------------------------------------------
-         Step Operation       Prerequisites / Code or procedure            Expected output /   Object behavior
-                              inputs                                       result to inspect   
-  ----------- --------------- --------------- ---------------------------- ------------------- -----------------
-            1 Confirm source  \[Access,       \[Instructions / link\]      \[Sources           \[No change /
-              access and      project,                                     accessible; correct other\]
-              project /       location\]                                   location\]          
-              dataset                                                                          
-              configuration                                                                    
-
-            2 Create or       \[Source and    \[`sql/02_ingest.sql` /      \[Raw table, row    \[Create /
-              refresh GBIF    destination\]   loading instructions\]       count, key checks\] replace / append
-              Raw input                                                                        / merge\]
-
-            3 Create or       \[Source and    \[`sql/02_ingest.sql` /      \[Boundary count    \[Create /
-              refresh Census  destination\]   loading instructions\]       and geometry        replace / append
-              Raw input                                                    availability\]      / merge\]
-
-            4 Build Curated   \[Required Raw  \[`sql/03_curate.sql`\]      \[Eligible,         \[Create /
-              occurrences     objects\]                                    valid-coordinate,   replace / append
-                                                                           matched, Curated    / merge\]
-                                                                           counts\]            
-
-            5 Build Curated   \[Required Raw  \[`sql/03_curate.sql`\]      \[Dimension counts, \[Create /
-              dimensions /    and Curated                                  keys,               replace / append
-              related objects objects\]                                    relationships\]     / merge\]
-
-            6 Run acceptance  \[Curated       \[`sql/04_acceptance.sql`,   \[Grain /           \[Read-only /
-              check 1         objects\]       query\]                      relationship        other\]
-                                                                           result\]            
-
-            7 Run acceptance  \[Curated       \[`sql/04_acceptance.sql`,   \[Audience-result   \[Read-only /
-              check 2         objects\]       query\]                      meaning result\]    other\]
-
-            8 Save results    \[Prior steps   \[Instructions / paths\]     \[Results and       \[Documentation
-              and verify      complete\]                                   documentation       update\]
-              documentation                                                accessible\]        
-  --------------------------------------------------------------------------------------------------------------
-
-**Exact run procedure:** \[Include script order, required substitutions
-/ variables, interface steps, permissions, and configuration not obvious
-from SQL links.\]
-
-**Inputs that must already exist:** \[Source tables, datasets, access
-permissions, prerequisite objects. Never include credentials or
-secrets.\]
-
-**Objects replaced, appended to, or otherwise changed:** \[Identify each
-operation and how to avoid unintended duplicate appends or destructive
-replacements.\]
-
-**Results to save before later steps overwrite them:** \[Identify
-intermediate results / counts / evidence to retain and where they are
-stored.\]
-
-### Reproducibility and verification
-
--   **Last successful documented build:** \[Date and time, including
-    time zone\]
--   **Build input selection:** \[Snapshot, source version, date range,
-    filters, selection timestamp\]
--   **What a reviewer can reproduce:** \[Objects and results that can be
-    recreated\]
--   **Known later-run differences:** \[Source refreshes, snapshot
-    limitations, and likely causes of changed counts\]
--   **Evidence instructions match the build:** \[Explain how you
-    verified the documented run order against the successful build;
-    include job IDs or result references if useful\]
 
 ### Main limitation and P3 next step
 
@@ -319,12 +251,12 @@ stored.\]
 - The query that creates the FACT_GBIF_OCCURRENCE curated table takes substantial amount of time to run and processes nearly 200 GB of data, so I'd like to optimize this more.
 
 **Concrete P3 next step:** 
-
+- Develop the version history for urban area boundaries more.
+- Create a load and refresh history table.
+- Review raw and curation SQL logic to prevent duplicate rows.
+- Explore possible serving level tools for geographic visualizations.
 
 ### AI and tool-use note
 
-\[Identify consequential AI or other tool assistance for code, SQL,
-debugging, documentation, or analysis. Explain what you reviewed and how
-you tested / verified it against actual BigQuery data. Identify the
-implementation decisions and claims you personally checked.\]
+AI assistance was used to help develop and revise BigQuery SQL, troubleshoot query logic, and organize the Raw and Curated data pipeline. AI suggestions were reviewed against the project requirements and the actual BigQuery source tables and query results. AI-generated code and interpretations were not accepted without review; I personally ran the ingestion, curation, and acceptance SQL in BigQuery and reviewed the resulting row counts, distinct keys, spatial matches, relationships, and monthly reporting metrics.
 
